@@ -319,7 +319,72 @@ SQL_DATA="$TEMP_DIR/real_data.sql"
 if [ -f "$SQL_STRUCTURE" ]; then
     info "1/2 Archivo de estructura 'db.sql' encontrado. Importando..."
     
-    if sudo -u postgres psql -f "$SQL_STRUCTURE"; then
+    # --- SOLICITUD DE CONTRASEÑAS PARA ROLES DE BD ---
+    info "Se detectó configuración de usuarios en db.sql. Solicitando contraseñas..."
+    
+    echo -e "${YELLOW}🔐 CONFIGURACIÓN DE USUARIOS DE BASE DE DATOS${NC}"
+    echo "Introduce contraseñas para los siguientes roles:"
+    echo ""
+    
+    # admin_user
+    echo -n "Contraseña para 'admin_user' (no será visible): "
+    read -s PASS_ADMIN
+    echo ""
+    
+    # operator_user
+    echo -n "Contraseña para 'operator_user' (no será visible): "
+    read -s PASS_OPERATOR
+    echo ""
+    
+    # reader_user
+    echo -n "Contraseña para 'reader_user' (no será visible): "
+    read -s PASS_READER
+    echo ""
+    
+    # scheduler_user
+    echo -n "Contraseña para 'scheduler_user' (no será visible): "
+    read -s PASS_SCHEDULER
+    echo ""
+    
+    # --- VALIDACIÓN BÁSICA ---
+    if [ -z "$PASS_ADMIN" ] || [ -z "$PASS_OPERATOR" ] || [ -z "$PASS_READER" ] || [ -z "$PASS_SCHEDULER" ]; then
+        error_log "Una o más contraseñas están vacías. No se puede continuar."
+        exit 1
+    fi
+    
+    # --- CREAR ARCHIVO SQL TEMPORAL CON CONTRASEÑAS SUSTITUIDAS ---
+    SQL_STRUCTURE_TEMP="$TEMP_DIR/db_temp.sql"
+    info "Generando archivo SQL con contraseñas sustituidas..."
+    
+    # Leer el archivo original y reemplazar los placeholders
+    cat "$SQL_STRUCTURE" | \
+        sed "s|<CONTRASEÑA>|'${PASS_ADMIN}'|g; 0,/'${PASS_ADMIN}'/s/'${PASS_ADMIN}'/$(echo "${PASS_ADMIN}" | sed 's/[\/&]/\\&/g')/; 0~3s/'${PASS_ADMIN}'/$(echo "${PASS_OPERATOR}" | sed 's/[\/&]/\\&/g')/; 0~4s/'${PASS_ADMIN}'/$(echo "${PASS_READER}" | sed 's/[\/&]/\\&/g')/; 0~5s/'${PASS_ADMIN}'/$(echo "${PASS_SCHEDULER}" | sed 's/[\/&]/\\&/g')/" > "$SQL_STRUCTURE_TEMP" || {
+        # Método alternativo más robusto si sed falla
+        awk -v a="${PASS_ADMIN}" -v o="${PASS_OPERATOR}" -v r="${PASS_READER}" -v s="${PASS_SCHEDULER}" '
+            NR == 1 { count = 0 }
+            {
+                if (/<CONTRASEÑA>/ && count == 0) {
+                    gsub(/<CONTRASEÑA>/, "'"'"'" a "'"'"'")
+                    count++
+                } else if (/<CONTRASEÑA>/ && count == 1) {
+                    gsub(/<CONTRASEÑA>/, "'"'"'" o "'"'"'")
+                    count++
+                } else if (/<CONTRASEÑA>/ && count == 2) {
+                    gsub(/<CONTRASEÑA>/, "'"'"'" r "'"'"'")
+                    count++
+                } else if (/<CONTRASEÑA>/ && count == 3) {
+                    gsub(/<CONTRASEÑA>/, "'"'"'" s "'"'"'")
+                    count++
+                }
+                print
+            }
+        ' "$SQL_STRUCTURE" > "$SQL_STRUCTURE_TEMP"
+    }
+    
+    info "Archivo SQL temporal generado: $SQL_STRUCTURE_TEMP"
+    
+    # --- EJECUTAR EL ARCHIVO SQL MODIFICADO ---
+    if sudo -u postgres psql -f "$SQL_STRUCTURE_TEMP"; then
         info "Estructura de Base de Datos importada exitosamente."
         
         # 5. Ejecutar real_data.sql (Datos) - SOLO si la estructura pasó (o si existe)
