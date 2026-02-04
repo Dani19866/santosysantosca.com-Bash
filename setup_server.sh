@@ -357,29 +357,28 @@ if [ -f "$SQL_STRUCTURE" ]; then
     info "Generando archivo SQL con contraseñas sustituidas..."
     
     # Leer el archivo original y reemplazar los placeholders
-    cat "$SQL_STRUCTURE" | \
-        sed "s|<CONTRASEÑA>|'${PASS_ADMIN}'|g; 0,/'${PASS_ADMIN}'/s/'${PASS_ADMIN}'/$(echo "${PASS_ADMIN}" | sed 's/[\/&]/\\&/g')/; 0~3s/'${PASS_ADMIN}'/$(echo "${PASS_OPERATOR}" | sed 's/[\/&]/\\&/g')/; 0~4s/'${PASS_ADMIN}'/$(echo "${PASS_READER}" | sed 's/[\/&]/\\&/g')/; 0~5s/'${PASS_ADMIN}'/$(echo "${PASS_SCHEDULER}" | sed 's/[\/&]/\\&/g')/" > "$SQL_STRUCTURE_TEMP" || {
-        # Método alternativo más robusto si sed falla
-        awk -v a="${PASS_ADMIN}" -v o="${PASS_OPERATOR}" -v r="${PASS_READER}" -v s="${PASS_SCHEDULER}" '
-            NR == 1 { count = 0 }
-            {
-                if (/<CONTRASEÑA>/ && count == 0) {
-                    gsub(/<CONTRASEÑA>/, "'"'"'" a "'"'"'")
+    # Utilizamos awk para reemplazar en orden: admin_user, operator_user, reader_user, scheduler_user
+    awk -v a="${PASS_ADMIN}" -v o="${PASS_OPERATOR}" -v r="${PASS_READER}" -v s="${PASS_SCHEDULER}" '
+        BEGIN { count = 0 }
+        {
+            if (/<CONTRASEÑA>/) {
+                if (count == 0) {
+                    gsub(/<CONTRASEÑA>/, "'\'''" a "'\''")
                     count++
-                } else if (/<CONTRASEÑA>/ && count == 1) {
-                    gsub(/<CONTRASEÑA>/, "'"'"'" o "'"'"'")
+                } else if (count == 1) {
+                    gsub(/<CONTRASEÑA>/, "'\'''" o "'\''")
                     count++
-                } else if (/<CONTRASEÑA>/ && count == 2) {
-                    gsub(/<CONTRASEÑA>/, "'"'"'" r "'"'"'")
+                } else if (count == 2) {
+                    gsub(/<CONTRASEÑA>/, "'\'''" r "'\''")
                     count++
-                } else if (/<CONTRASEÑA>/ && count == 3) {
-                    gsub(/<CONTRASEÑA>/, "'"'"'" s "'"'"'")
+                } else if (count == 3) {
+                    gsub(/<CONTRASEÑA>/, "'\'''" s "'\''")
                     count++
                 }
-                print
             }
-        ' "$SQL_STRUCTURE" > "$SQL_STRUCTURE_TEMP"
-    }
+            print
+        }
+    ' "$SQL_STRUCTURE" > "$SQL_STRUCTURE_TEMP"
     
     info "Archivo SQL temporal generado: $SQL_STRUCTURE_TEMP"
     
